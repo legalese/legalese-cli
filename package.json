@@ -1,0 +1,35 @@
+{
+  "name": "@legalese/cli",
+  "version": "0.2.0",
+  "description": "Legalese Cloud CLI \u2014 auth broker and execution surface for deployed legal & policy rules.",
+  "type": "module",
+  "bin": {
+    "legalese": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "format": "prettier --write 'src/**/*.ts' 'test/**/*.ts'",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
+    "build:bin": "bash scripts/build-binaries.sh",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "prettier": "^3.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4"
+  }
+}
