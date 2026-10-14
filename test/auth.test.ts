@@ -135,6 +135,19 @@ describe("logout", () => {
     expect(env.stderr()).toContain("the session is ended on the server too");
   });
 
+  it("leaves the OS keychain alone with the file store", async () => {
+    // The keychain item is shared by every config directory: signing in and
+    // out of a file-store session (as every test does) must not delete the
+    // developer's real sign-in.
+    env = await setup();
+    await loginCmd(undefined, device, {});
+    await loginCmd(undefined, device, {});
+    await logoutCmd({});
+    expect(env.keychainCalls().filter((c) => !c.endsWith("--version"))).toEqual(
+      [],
+    );
+  });
+
   it("says so when the server can't end CLI sessions", async () => {
     env = await setup();
     await loginCmd(undefined, device, {});
@@ -165,10 +178,20 @@ describe("whoami and token", () => {
     env = await setup();
     await loginCmd(undefined, device, {});
     env.cloud.user.role = "admin";
-    env.cloud.user.permissions = ["l4:rules", "l4:evaluate", "l4:deploy"];
+    env.cloud.user.permissions = [
+      "widgets:sso:manage",
+      "l4:rules",
+      "l4:evaluate",
+      "l4:deploy",
+      "ai:chat",
+    ];
     await whoamiCmd({});
     expect(env.stderr()).toContain("Role:         admin");
-    expect(loadInfo(loadConfig())?.permissions).toContain("l4:deploy");
+    // Only the l4: permissions are shown; session.json keeps them all.
+    expect(env.stderr()).toContain(
+      "Permissions:  l4:rules, l4:evaluate, l4:deploy\n",
+    );
+    expect(loadInfo(loadConfig())?.permissions).toContain("ai:chat");
   });
 
   it("prints JSON for other tools", async () => {

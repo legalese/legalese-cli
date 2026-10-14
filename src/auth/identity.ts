@@ -19,6 +19,15 @@ export interface Identity {
 }
 
 /**
+ * The permissions worth showing: the token also carries WorkOS widget
+ * permissions and other products' (`ai:…`), which mean nothing to this CLI.
+ * JSON output and session.json keep the full list.
+ */
+export function rulePermissions(permissions: string[]): string[] {
+  return permissions.filter((p) => p.startsWith("l4:"));
+}
+
+/**
  * Fetch the identity behind an AuthKit access token. Returns null when the
  * server doesn't offer /auth/whoami (an older proxy).
  */

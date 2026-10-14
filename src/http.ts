@@ -1,6 +1,7 @@
 // Authenticated requests to the proxy hosts, with errors explained from the
 // caller's point of view: which org, which role, which permission is missing.
 
+import { rulePermissions } from "./auth/identity.js";
 import type { ResolvedAuth } from "./auth/resolve.js";
 import { CliError, EXIT } from "./output.js";
 
@@ -95,8 +96,9 @@ export function httpError(
     const holder = session
       ? `your role${session.role ? ` '${session.role}'` : ""} in ${orgLabel}`
       : `this credential for ${orgLabel}`;
+    const shown = session ? rulePermissions(session.permissions) : [];
     const has = session
-      ? ` (you have: ${session.permissions.length ? session.permissions.join(", ") : "no permissions"})`
+      ? ` (you have: ${shown.length ? shown.join(", ") : "no permissions"})`
       : "";
     return new CliError(
       required

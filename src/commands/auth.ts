@@ -28,6 +28,7 @@ import {
   describeOrg,
   describeUser,
   fetchIdentity,
+  rulePermissions,
   type Identity,
 } from "../auth/identity.js";
 
@@ -119,8 +120,9 @@ function printIdentity(
   if (identity.organization)
     info(`Org:          ${describeOrg(identity.organization)}`);
   info(`Role:         ${identity.role ?? "(none)"}`);
+  const permissions = rulePermissions(identity.permissions);
   info(
-    `Permissions:  ${identity.permissions.length ? identity.permissions.join(", ") : "(none)"}`,
+    `Permissions:  ${permissions.length ? permissions.join(", ") : "(none)"}`,
   );
   info(`Credential:   ${extra.credential}`);
 }

@@ -69,7 +69,9 @@ describe("as the signed-in user, in their org", () => {
   });
 
   it("explains a missing permission in terms of the user's role", async () => {
-    env = await setup({ user: { role: "viewer", permissions: ["l4:rules"] } });
+    env = await setup({
+      user: { role: "viewer", permissions: ["widgets:sso:manage", "l4:rules"] },
+    });
     await signIn();
     const err = await expectCliError(
       evalCmd("rent-rules", "rentIsOverdue", "{}", {}),
