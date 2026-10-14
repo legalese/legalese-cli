@@ -124,9 +124,18 @@ export function saveSecret(
   return "file";
 }
 
-/** Remove the session from every store. */
+/**
+ * Remove the session from every store this configuration may have used. With
+ * LEGALESE_CREDENTIAL_STORE=file the keychain is left alone unless the session
+ * says it's there: the keychain item is shared by every config directory, so
+ * a file-store session (a test's, say) must not delete someone else's.
+ */
 export function clearSession(config: Config): void {
-  platformKeychain()?.delete();
+  if (
+    config.credentialStore !== "file" ||
+    loadInfo(config)?.store === "keychain"
+  )
+    platformKeychain()?.delete();
   rmSync(secretPath(config.configDir), { force: true });
   rmSync(infoPath(config.configDir), { force: true });
 }

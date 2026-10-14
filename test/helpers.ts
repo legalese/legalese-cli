@@ -1,6 +1,14 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { vi } from "vitest";
 import {
   startFakeCloud,
@@ -27,16 +35,41 @@ export interface TestEnv {
   err: string[];
   stdout(): string;
   stderr(): string;
+  /** Calls that reached the stand-in `security` / `secret-tool`. */
+  keychainCalls(): string[];
   done(): Promise<void>;
+}
+
+/**
+ * Stand-ins for the OS keychain tools, first on PATH: they record the call
+ * and fail, so no test can read, overwrite or delete the developer's real
+ * sign-in.
+ */
+function fakeKeychainTools(dir: string): { bin: string; log: string } {
+  const bin = join(dir, "bin");
+  const log = join(dir, "keychain-calls.log");
+  mkdirSync(bin);
+  for (const tool of ["security", "secret-tool"]) {
+    const file = join(bin, tool);
+    writeFileSync(
+      file,
+      `#!/bin/sh\necho "${tool} $*" >> "${log}"\ncat > /dev/null\nexit 1\n`,
+    );
+    chmodSync(file, 0o755);
+  }
+  return { bin, log };
 }
 
 /** A fake cloud, a temp config dir with the file store, and captured output. */
 export async function setup(opts: FakeCloudOptions = {}): Promise<TestEnv> {
   const cloud = await startFakeCloud(opts);
   const dir = mkdtempSync(join(tmpdir(), "legalese-cli-"));
+  const keychain = fakeKeychainTools(dir);
   const saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+  const savedPath = process.env.PATH;
   for (const k of ENV_KEYS) delete process.env[k];
   Object.assign(process.env, {
+    PATH: `${keychain.bin}${delimiter}${savedPath ?? ""}`,
     LEGALESE_CONFIG_DIR: dir,
     LEGALESE_CREDENTIAL_STORE: "file",
     LEGALESE_SKILLS_URL: cloud.base,
@@ -64,9 +97,14 @@ export async function setup(opts: FakeCloudOptions = {}): Promise<TestEnv> {
     err,
     stdout: () => out.join(""),
     stderr: () => err.join(""),
+    keychainCalls: () =>
+      existsSync(keychain.log)
+        ? readFileSync(keychain.log, "utf8").split("\n").filter(Boolean)
+        : [],
     async done() {
       so.mockRestore();
       se.mockRestore();
+      process.env.PATH = savedPath;
       for (const k of ENV_KEYS) {
         if (saved[k] === undefined) delete process.env[k];
         else process.env[k] = saved[k];
