@@ -14,6 +14,7 @@ import {
   info,
   isInteractive,
   printJson,
+  select,
   warn,
 } from "../output.js";
 import {
@@ -22,6 +23,9 @@ import {
   decodeJwtClaims,
   deviceLogin,
   discoverAuthServer,
+  noAnswer,
+  PROMPT_TIMEOUT_MS,
+  signInCancelled,
   type TokenSet,
 } from "../auth/oauth.js";
 import {
@@ -143,6 +147,33 @@ function storeLabel(store: SessionInfo["store"]): string {
     : "the OS keychain";
 }
 
+/**
+ * How to sign in: as a flag says (--device; --browser or --no-browser);
+ * otherwise with a code where no browser can open here (SSH), through the
+ * browser when nobody is at a terminal to ask, and else as the user picks.
+ */
+async function signInMethod(opts: {
+  device?: boolean;
+  browser?: boolean;
+}): Promise<"browser" | "code"> {
+  if (opts.device) return "code";
+  if (opts.browser !== undefined) return "browser";
+  if (!canOpenBrowser()) return "code";
+  if (!isInteractive()) return "browser";
+  const choice = await select(
+    "How do you want to sign in?",
+    [
+      ["browser", "Open browser"],
+      ["code", "Verify with code"],
+      ["cancel", "Cancel"],
+    ],
+    PROMPT_TIMEOUT_MS,
+  );
+  if (choice === "timeout") throw noAnswer();
+  if (choice === "cancel") throw signInCancelled();
+  return choice;
+}
+
 export async function loginCmd(
   org: string | undefined,
   opts: { device?: boolean; browser?: boolean },
@@ -156,10 +187,18 @@ export async function loginCmd(
     );
   }
 
+  if (opts.device && opts.browser === true) {
+    throw new CliError(
+      "use either --browser or --device, not both",
+      EXIT.USAGE,
+    );
+  }
+
+  const method = await signInMethod(opts);
   const as = await discoverAuthServer(config);
   const open = opts.browser !== false;
   let tokens: TokenSet | null = null;
-  if (!opts.device) {
+  if (method === "browser") {
     tokens = await browserLogin(as, config.clientId, { open });
     if (!tokens)
       info(

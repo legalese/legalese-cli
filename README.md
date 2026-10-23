@@ -24,9 +24,10 @@ node dist/index.js --help        # or: npm link  →  legalese --help
 ## Sign in
 
 ```sh
-legalese login            # browser sign-in; pick your organization there
+legalese login            # asks: open browser, verify with code, or cancel
 legalese login acme       # same, and check that you picked 'acme'
-legalese login --device   # sign in with a code (SSH, no local browser)
+legalese login --browser  # browser sign-in without asking (scripts, AI agents)
+legalese login --device   # sign in with a code without asking (SSH, headless)
 legalese whoami           # user, org, role, permissions, credential
 legalese logout           # end the session on the server and remove it here
 ```
@@ -36,15 +37,21 @@ sign in and choose the organization, exactly as in the VS Code extension. If
 you belong to several organizations, that's where you pick one. One session at
 a time: to switch organization, `legalese logout` and `legalese login` again.
 
+At a terminal, `login` asks how to sign in; with no choice in 3 minutes it
+gives up. **Open browser** opens the sign-in page and needs no code.
+**Verify with code** shows a short code first, then asks before opening the
+sign-in page: confirm there only if the page shows the same code. Over SSH or
+without a display, `login` signs in with a code and prints the page's link
+instead of asking; so does `--device`, and `--no-browser` prints the link
+without opening it. When not run at a terminal (scripts, AI agents), it uses
+the browser unless `--device` is given.
+
 How it works: standard OAuth for native apps against the public WorkOS client
-"Legalese CLI". The browser flow uses PKCE and a callback on `127.0.0.1`
-(RFC 8252); when that callback isn't registered for the client, or with
-`--device`, it uses the device flow (RFC 8628): the CLI shows a short code,
-then asks before opening the sign-in page (it prints the page's link instead
-with `--no-browser`, over SSH, or when not run at a terminal). Confirm there
-only if the page shows the same code. With no answer before the code expires,
-`login` exits. Access tokens last minutes and renew automatically; the
-single-use refresh token rotates on every renewal.
+"Legalese CLI". Open browser uses PKCE and a callback on `127.0.0.1`
+(RFC 8252), and falls back to a code when that callback isn't registered for
+the client. Verify with code is the device flow (RFC 8628). Access tokens last
+minutes and renew automatically; the single-use refresh token rotates on every
+renewal.
 
 The session's tokens are kept in the OS keychain (macOS Keychain, or libsecret
 on Linux via `secret-tool`); without one, in `~/.config/legalese/credentials.json`

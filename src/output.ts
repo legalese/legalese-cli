@@ -1,6 +1,6 @@
 // Output + error helpers. Exit codes mirror the CLI spec.
 
-import { createInterface } from "node:readline";
+import { createInterface, emitKeypressEvents } from "node:readline";
 
 export const EXIT = {
   OK: 0,
@@ -81,6 +81,74 @@ export function confirm(
         else ask();
       });
     ask();
+  });
+}
+
+type KeyInput = NodeJS.ReadableStream & {
+  isTTY?: boolean;
+  setRawMode?: (mode: boolean) => unknown;
+};
+
+/**
+ * Let the user pick one of `choices` on stderr with the arrow keys and
+ * Enter, or by its number; the first is the default. Esc or Ctrl+C gives
+ * "cancel", and no choice within timeoutMs gives "timeout". When done, the
+ * menu is replaced by the question and the answer.
+ */
+export function select<T extends string>(
+  question: string,
+  choices: ReadonlyArray<readonly [T, string]>,
+  timeoutMs: number,
+  input: KeyInput = process.stdin,
+): Promise<T | "cancel" | "timeout"> {
+  const out = process.stderr;
+  let current = 0;
+  const draw = () =>
+    choices.forEach(([, label], i) =>
+      out.write(
+        `\x1b[2K${i === current ? `❯ ${bold(label)}` : `  ${label}`}\n`,
+      ),
+    );
+  out.write(`\x1b[?25l${question}\n`);
+  draw();
+
+  return new Promise((resolve) => {
+    const done = (answer: T | "cancel" | "timeout", label: string) => {
+      clearTimeout(timer);
+      input.off("keypress", onKey);
+      input.off("end", onEnd);
+      if (input.isTTY) input.setRawMode?.(false);
+      input.pause();
+      out.write(
+        `\x1b[${choices.length + 1}A\x1b[0J${question} ${label}\n\x1b[?25h`,
+      );
+      resolve(answer);
+    };
+    const choose = (i: number) => done(choices[i]![0], choices[i]![1]);
+    const onKey = (str?: string, key?: { name?: string; ctrl?: boolean }) => {
+      const name = key?.name;
+      if ((key?.ctrl && name === "c") || name === "escape")
+        return done("cancel", "cancelled");
+      if (name === "return" || name === "enter") return choose(current);
+      const n = Number(str);
+      if (Number.isInteger(n) && n >= 1 && n <= choices.length)
+        return choose(n - 1);
+      if (name === "up" || name === "k")
+        current = (current + choices.length - 1) % choices.length;
+      else if (name === "down" || name === "j" || name === "tab")
+        current = (current + 1) % choices.length;
+      else return;
+      out.write(`\x1b[${choices.length}A`);
+      draw();
+    };
+    const onEnd = () => done("cancel", "cancelled");
+    const timer = setTimeout(() => done("timeout", "no answer"), timeoutMs);
+
+    emitKeypressEvents(input);
+    if (input.isTTY) input.setRawMode?.(true);
+    input.on("keypress", onKey);
+    input.on("end", onEnd);
+    input.resume();
   });
 }
 

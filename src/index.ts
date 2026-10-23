@@ -40,12 +40,15 @@ program
     "[org]",
     "org slug you expect to sign in to (checked after sign-in)",
   )
-  .option(
-    "--device",
-    "sign in with a code instead of a browser callback (SSH, headless)",
-  )
+  // --browser before --no-browser, so that neither leaves it undefined: then
+  // login asks how to sign in.
+  .option("--browser", "sign in through the browser, without asking how")
+  .option("--device", "sign in with a code, without asking how (SSH, headless)")
   .option("--no-browser", "print the sign-in link instead of opening a browser")
-  .description("Sign in to Legalese Cloud and choose your organization.")
+  .description(
+    "Sign in to Legalese Cloud and choose your organization. At a terminal it " +
+      "asks how to sign in; --browser or --device skip the question (scripts, AI agents).",
+  )
   .action(
     (org: string | undefined, opts: { device?: boolean; browser?: boolean }) =>
       loginCmd(org, opts, g()),

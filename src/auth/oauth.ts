@@ -13,6 +13,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { Config } from "../config.js";
 import { OAUTH_SCOPES } from "../config.js";
 import { bold, CliError, confirm, EXIT, info, warn } from "../output.js";
+import { callbackPage } from "./callback-page.js";
 
 export interface AuthServer {
   issuer: string;
@@ -245,12 +246,6 @@ function listen(port: number): Promise<Server> {
   });
 }
 
-const CALLBACK_PAGE = (ok: boolean) =>
-  `<!doctype html><html><head><meta charset="utf-8"><title>Legalese CLI</title></head>` +
-  `<body style="font-family:system-ui;padding:2rem;max-width:32rem">` +
-  `<h2>${ok ? "Signed in" : "Sign-in failed"}</h2>` +
-  `<p>You can close this tab and return to the terminal.</p></body></html>`;
-
 /** How long the browser flow waits for the callback. */
 const BROWSER_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -325,7 +320,7 @@ function waitForCode(
       const err = reqUrl.searchParams.get("error");
       const code = reqUrl.searchParams.get("code");
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(CALLBACK_PAGE(!err && !!code));
+      res.end(callbackPage(!err && !!code));
       clearTimeout(timer);
       server.close();
       if (err) {
@@ -345,6 +340,18 @@ function waitForCode(
     if (open) void openBrowser(url.toString());
   });
 }
+
+/** How long a sign-in question waits for an answer before giving up. */
+export const PROMPT_TIMEOUT_MS = 3 * 60 * 1000;
+
+export const signInCancelled = () =>
+  new CliError("sign-in cancelled", EXIT.UNAUTHENTICATED);
+
+export const noAnswer = () =>
+  new CliError(
+    "no answer in time — run 'legalese login' again",
+    EXIT.UNAUTHENTICATED,
+  );
 
 const codeExpired = () =>
   new CliError(
@@ -408,11 +415,10 @@ export async function deviceLogin(
     warn(`${check}.`);
     const answer = await confirm(
       "Open the sign-in page in your browser now? [Y/n] ",
-      (deadline - nowSec()) * 1000,
+      Math.min(PROMPT_TIMEOUT_MS, (deadline - nowSec()) * 1000),
     );
-    if (answer === "no")
-      throw new CliError("sign-in cancelled", EXIT.UNAUTHENTICATED);
-    if (answer === "timeout") throw codeExpired();
+    if (answer === "no") throw signInCancelled();
+    if (answer === "timeout") throw noAnswer();
     if (!(await openBrowser(link)))
       warn(`Couldn't open a browser; open this link instead:\n  ${link}`);
   } else {
