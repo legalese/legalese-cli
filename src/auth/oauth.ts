@@ -12,7 +12,7 @@ import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Config } from "../config.js";
 import { OAUTH_SCOPES } from "../config.js";
-import { bold, CliError, confirm, EXIT, info, warn } from "../output.js";
+import { bold, CliError, EXIT, info, warn } from "../output.js";
 import { callbackPage } from "./callback-page.js";
 
 export interface AuthServer {
@@ -110,8 +110,7 @@ export function canOpenBrowser(): boolean {
   return true;
 }
 
-/** Open the URL in the default browser; false when that couldn't start. */
-export function openBrowser(url: string): Promise<boolean> {
+export function openBrowser(url: string): void {
   const cmd =
     process.platform === "darwin"
       ? "open"
@@ -119,16 +118,15 @@ export function openBrowser(url: string): Promise<boolean> {
         ? "cmd"
         : "xdg-open";
   const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
-  return new Promise((resolve) => {
-    try {
-      const child = spawn(cmd, args, { stdio: "ignore", detached: true });
-      child.once("spawn", () => resolve(true));
-      child.once("error", () => resolve(false));
-      child.unref();
-    } catch {
-      resolve(false);
-    }
-  });
+  try {
+    const child = spawn(cmd, args, { stdio: "ignore", detached: true });
+    child.on("error", () => {
+      /* headless — the URL is printed for the user to open manually */
+    });
+    child.unref();
+  } catch {
+    /* headless — the URL is printed for the user to open manually */
+  }
 }
 
 interface TokenResponse {
@@ -337,7 +335,7 @@ function waitForCode(
       `Opening your browser to sign in to Legalese Cloud…\n` +
         `If it doesn't open, visit:\n  ${url}\n`,
     );
-    if (open) void openBrowser(url.toString());
+    if (open) openBrowser(url.toString());
   });
 }
 
@@ -362,16 +360,11 @@ const codeExpired = () =>
 const validFor = (secs: number) =>
   secs >= 120 ? `${Math.round(secs / 60)} minutes` : `${secs} seconds`;
 
-/**
- * Device-authorization flow (RFC 8628): for SSH sessions and machines
- * without a browser, and when browser sign-in isn't available. With
- * `prompt`, it asks before opening the sign-in page; otherwise it prints
- * the page's link.
- */
+/** Device-authorization flow (RFC 8628): for SSH sessions and machines
+ *  without a browser, and when browser sign-in isn't available. */
 export async function deviceLogin(
   as: AuthServer,
   clientId: string,
-  opts: { prompt: boolean },
 ): Promise<TokenSet> {
   if (!as.deviceAuthorizationEndpoint) {
     throw new CliError(
@@ -404,26 +397,16 @@ export async function deviceLogin(
     );
   }
 
-  // The code is shown before the page can open and take focus: confirming
-  // there is only safe once you've seen that it matches this one.
+  // The browser is never opened for the user: the page would take focus and
+  // they'd confirm without comparing its code with the one shown here.
   const link = da.verification_uri_complete ?? da.verification_uri;
   const expiresIn = da.expires_in ?? 300;
   const deadline = nowSec() + expiresIn;
-  const check = `Confirm on the sign-in page only if it shows this code (valid for ${validFor(expiresIn)})`;
-  warn(`Your sign-in code:\n\n    ${bold(da.user_code)}\n`);
-  if (opts.prompt) {
-    warn(`${check}.`);
-    const answer = await confirm(
-      "Open the sign-in page in your browser now? [Y/n] ",
-      Math.min(PROMPT_TIMEOUT_MS, (deadline - nowSec()) * 1000),
-    );
-    if (answer === "no") throw signInCancelled();
-    if (answer === "timeout") throw noAnswer();
-    if (!(await openBrowser(link)))
-      warn(`Couldn't open a browser; open this link instead:\n  ${link}`);
-  } else {
-    warn(`${check}:\n  ${link}`);
-  }
+  warn(
+    `Your sign-in code:\n\n    ${bold(da.user_code)}\n\n` +
+      `Open this link and confirm only if the page shows the same code ` +
+      `(valid for ${validFor(expiresIn)}):\n  ${link}`,
+  );
   info("\nWaiting for you to confirm in the browser…");
 
   let intervalMs = (da.interval ?? 5) * 1000;

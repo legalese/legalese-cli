@@ -39,10 +39,10 @@ a time: to switch organization, `legalese logout` and `legalese login` again.
 
 At a terminal, `login` asks how to sign in; with no choice in 3 minutes it
 gives up. **Open browser** opens the sign-in page and needs no code.
-**Verify with code** shows a short code first, then asks before opening the
-sign-in page: confirm there only if the page shows the same code. Over SSH or
-without a display, `login` signs in with a code and prints the page's link
-instead of asking; so does `--device`, and `--no-browser` prints the link
+**Verify with code** shows a short code and the sign-in page's link, and
+opens nothing: open the link yourself and confirm only if the page shows the
+same code. Over SSH or without a display, `login` signs in with a code without
+asking; so does `--device`. `--no-browser` prints the browser sign-in link
 without opening it. When not run at a terminal (scripts, AI agents), it uses
 the browser unless `--device` is given.
 

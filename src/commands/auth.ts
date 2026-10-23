@@ -205,11 +205,7 @@ export async function loginCmd(
         "Browser sign-in isn't set up for this client; using a sign-in code.\n",
       );
   }
-  // Offer to open the sign-in page only to someone at a terminal, on a
-  // screen a browser can open on; otherwise print its link.
-  tokens ??= await deviceLogin(as, config.clientId, {
-    prompt: open && isInteractive() && canOpenBrowser(),
-  });
+  tokens ??= await deviceLogin(as, config.clientId);
 
   const identity = await identityFor(config, tokens, wantedOrg);
   if (!identity.organization) {
