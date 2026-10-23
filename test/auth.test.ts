@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -14,8 +14,18 @@ import { CliError, EXIT } from "../src/output.js";
 import { approveBrowserSignIn, fakeJwt } from "./fake-cloud.js";
 import { setup, type TestEnv } from "./helpers.js";
 
+// Records browser launches instead of making them.
+const spawn = vi.hoisted(() => vi.fn());
+vi.mock("node:child_process", async (orig) => ({
+  ...(await orig<typeof import("node:child_process")>()),
+  spawn,
+}));
+
 let env: TestEnv;
-afterEach(async () => env?.done());
+afterEach(async () => {
+  spawn.mockClear();
+  await env?.done();
+});
 
 const device = { device: true, browser: false };
 const readJson = (p: string) => JSON.parse(readFileSync(p, "utf8"));
@@ -55,11 +65,21 @@ describe("login", () => {
 
   it("falls back to a device code when no browser callback is registered", async () => {
     env = await setup({ loopbackRedirects: false });
-    await loginCmd(undefined, { browser: false }, {});
+    await loginCmd(undefined, {}, {});
     expect(
       env.cloud.calls.some((c) => c.path === "/oauth2/device_authorization"),
     ).toBe(true);
     expect(env.stderr()).toContain("using a sign-in code");
+  });
+
+  it("shows the sign-in code and link without opening a browser", async () => {
+    env = await setup();
+    await loginCmd(undefined, { device: true }, {});
+    expect(env.stderr()).toContain("Your sign-in code:\n\n    ABCD-EFGH\n");
+    expect(env.stderr()).toContain(
+      `  ${env.cloud.base}/device?user_code=ABCD-EFGH\n`,
+    );
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it("signs in through the browser with PKCE and ignores forged callbacks", async () => {

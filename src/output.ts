@@ -35,6 +35,13 @@ export function info(msg: string): void {
   if (!quiet) process.stderr.write(msg + "\n");
 }
 
+/** Bold on a terminal; plain when stderr is piped or NO_COLOR is set. */
+export function bold(s: string): string {
+  return process.stderr.isTTY && !process.env.NO_COLOR
+    ? `\x1b[1m${s}\x1b[22m`
+    : s;
+}
+
 /** Like info, but shown even with --quiet. */
 export function warn(msg: string): void {
   process.stderr.write(msg + "\n");

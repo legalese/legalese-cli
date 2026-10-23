@@ -31,17 +31,18 @@ legalese whoami           # user, org, role, permissions, credential
 legalese logout           # end the session on the server and remove it here
 ```
 
-`login` opens Legalese Cloud's sign-in page (WorkOS AuthKit), where you sign in
-and choose the organization, exactly as in the VS Code extension. If you
-belong to several organizations, that's where you pick one. One session at a
-time: to switch organization, `legalese logout` and `legalese login` again.
+`login` takes you to Legalese Cloud's sign-in page (WorkOS AuthKit), where you
+sign in and choose the organization, exactly as in the VS Code extension. If
+you belong to several organizations, that's where you pick one. One session at
+a time: to switch organization, `legalese logout` and `legalese login` again.
 
 How it works: standard OAuth for native apps against the public WorkOS client
 "Legalese CLI". The browser flow uses PKCE and a callback on `127.0.0.1`
 (RFC 8252); when that callback isn't registered for the client, or with
-`--device`, it uses the device flow (RFC 8628) — you confirm a short code in
-the browser. Access tokens last minutes and renew automatically; the
-single-use refresh token rotates on every renewal.
+`--device`, it uses the device flow (RFC 8628): the CLI prints a short code and
+a link but doesn't open the browser itself. Open the link and confirm only if
+the page shows the same code. Access tokens last minutes and renew
+automatically; the single-use refresh token rotates on every renewal.
 
 The session's tokens are kept in the OS keychain (macOS Keychain, or libsecret
 on Linux via `secret-tool`); without one, in `~/.config/legalese/credentials.json`

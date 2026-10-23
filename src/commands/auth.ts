@@ -158,7 +158,7 @@ export async function loginCmd(
         "Browser sign-in isn't set up for this client; using a sign-in code.\n",
       );
   }
-  tokens ??= await deviceLogin(as, config.clientId, { open });
+  tokens ??= await deviceLogin(as, config.clientId);
 
   const identity = await identityFor(config, tokens, wantedOrg);
   if (!identity.organization) {

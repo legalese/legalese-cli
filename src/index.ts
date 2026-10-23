@@ -44,7 +44,10 @@ program
     "--device",
     "sign in with a code instead of a browser callback (SSH, headless)",
   )
-  .option("--no-browser", "print the sign-in link instead of opening a browser")
+  .option(
+    "--no-browser",
+    "print the sign-in link instead of opening a browser (sign-in with a code never opens one)",
+  )
   .description("Sign in to Legalese Cloud and choose your organization.")
   .action(
     (org: string | undefined, opts: { device?: boolean; browser?: boolean }) =>

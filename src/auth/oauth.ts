@@ -12,7 +12,7 @@ import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Config } from "../config.js";
 import { OAUTH_SCOPES } from "../config.js";
-import { CliError, EXIT, info } from "../output.js";
+import { bold, CliError, EXIT, info } from "../output.js";
 
 export interface AuthServer {
   issuer: string;
@@ -340,7 +340,6 @@ function waitForCode(
 export async function deviceLogin(
   as: AuthServer,
   clientId: string,
-  opts: { open: boolean },
 ): Promise<TokenSet> {
   if (!as.deviceAuthorizationEndpoint) {
     throw new CliError(
@@ -373,12 +372,15 @@ export async function deviceLogin(
     );
   }
 
+  // The browser is never opened for the user: the page would take focus and
+  // they'd confirm without comparing its code with the one shown here.
   const link = da.verification_uri_complete ?? da.verification_uri;
   info(
-    `To sign in, open:\n  ${link}\n` +
-      `and check that it shows the code:  ${da.user_code}\n`,
+    `Your sign-in code:\n\n    ${bold(da.user_code)}\n\n` +
+      `Open this link and confirm only if the page shows the same code:\n` +
+      `  ${link}\n\n` +
+      `Waiting for you to confirm in the browser…`,
   );
-  if (opts.open) openBrowser(link);
 
   let intervalMs = (da.interval ?? 5) * 1000;
   const deadline = nowSec() + (da.expires_in ?? 300);
