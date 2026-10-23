@@ -4,7 +4,7 @@ The `legalese` CLI is the **shell / CI client** for Legalese Cloud rules — dis
 
 It is one of **two clients** over the same authenticated endpoints. The **primary** path for AI agents is the **discovery MCP** bundled in the gateway plugin's `.mcp.json` — `search_rules` finds the matching deployments, each with its per-deployment MCP endpoint, with the org resolved from auth. The CLI is the equivalent where MCP isn't available.
 
-> Status (v0.2.0): `login` / `logout` / `whoami` / `token` work against the public WorkOS Connect client "Legalese CLI"; every command runs as the signed-in user in the org chosen at sign-in. Legalese Cloud is the resource server that validates everything it does.
+> Status (v0.2.1): `login` / `logout` / `whoami` / `token` work against the public WorkOS Connect client "Legalese CLI"; every command runs as the signed-in user in the org chosen at sign-in. Legalese Cloud is the resource server that validates everything it does.
 
 ---
 

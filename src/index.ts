@@ -19,7 +19,7 @@ program
       "org you chose, with your role's permissions.\n" +
       "Auth: --token > LEGALESE_TOKEN env > stored session.",
   )
-  .version("0.2.0")
+  .version("0.2.1")
   .option(
     "--org <slug>",
     "org slug for an API key (a session is bound to its org)",

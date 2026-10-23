@@ -1,6 +1,6 @@
 {
   "name": "@legalese/cli",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Legalese Cloud CLI \u2014 auth broker and execution surface for deployed legal & policy rules.",
   "license": "MIT",
   "type": "module",
