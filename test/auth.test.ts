@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -14,18 +15,46 @@ import { CliError, EXIT } from "../src/output.js";
 import { approveBrowserSignIn, fakeJwt } from "./fake-cloud.js";
 import { setup, type TestEnv } from "./helpers.js";
 
-// Records browser launches instead of making them.
-const spawn = vi.hoisted(() => vi.fn());
+// Browser launches are recorded instead of made, and the person at the
+// terminal is played by `confirm` and `isInteractive`.
+const fakes = vi.hoisted(() => ({
+  spawn: vi.fn(),
+  confirm: vi.fn(),
+  isInteractive: vi.fn(),
+}));
 vi.mock("node:child_process", async (orig) => ({
   ...(await orig<typeof import("node:child_process")>()),
-  spawn,
+  spawn: fakes.spawn,
+}));
+vi.mock("../src/output.js", async (orig) => ({
+  ...(await orig<typeof import("../src/output.js")>()),
+  confirm: fakes.confirm,
+  isInteractive: fakes.isInteractive,
 }));
 
+/** A browser launch that starts, or fails to start. */
+const browserLaunch = (event: "spawn" | "error") => () => {
+  const child = Object.assign(new EventEmitter(), { unref() {} });
+  queueMicrotask(() => child.emit(event, new Error("spawn failed")));
+  return child;
+};
+
 let env: TestEnv;
-afterEach(async () => {
-  spawn.mockClear();
-  await env?.done();
+beforeEach(() => {
+  fakes.spawn.mockReset().mockImplementation(browserLaunch("spawn"));
+  fakes.confirm.mockReset();
+  fakes.isInteractive.mockReset().mockReturnValue(false);
 });
+afterEach(async () => env?.done());
+
+/** Someone at a terminal on a desktop where a browser can open. */
+async function setupAtTerminal(): Promise<void> {
+  env = await setup();
+  fakes.isInteractive.mockReturnValue(true);
+  process.env.DISPLAY = ":0"; // restored by env.done()
+}
+
+const deviceLink = () => `${env.cloud.base}/device?user_code=ABCD-EFGH`;
 
 const device = { device: true, browser: false };
 const readJson = (p: string) => JSON.parse(readFileSync(p, "utf8"));
@@ -72,14 +101,76 @@ describe("login", () => {
     expect(env.stderr()).toContain("using a sign-in code");
   });
 
-  it("shows the sign-in code and link without opening a browser", async () => {
-    env = await setup();
-    await loginCmd(undefined, { device: true }, {});
-    expect(env.stderr()).toContain("Your sign-in code:\n\n    ABCD-EFGH\n");
+  it("shows the code first, then opens the sign-in page when you say yes", async () => {
+    await setupAtTerminal();
+    fakes.confirm.mockImplementation(async () => {
+      expect(env.stderr()).toContain("Your sign-in code:\n\n    ABCD-EFGH\n");
+      expect(fakes.spawn).not.toHaveBeenCalled();
+      return "yes";
+    });
+    await loginCmd(undefined, {}, {});
+
+    expect(fakes.confirm).toHaveBeenCalledOnce();
+    const [question, timeoutMs] = fakes.confirm.mock.calls[0]!;
+    expect(question).toBe("Open the sign-in page in your browser now? [Y/n] ");
+    // The answer is awaited until the code expires (60 s on the fake cloud).
+    expect(timeoutMs).toBeGreaterThan(55_000);
+    expect(timeoutMs).toBeLessThanOrEqual(60_000);
+    expect(fakes.spawn.mock.calls[0]![1]).toContain(deviceLink());
+    expect(env.stderr()).not.toContain(deviceLink());
+    expect(env.stderr()).toContain("Signed in as");
+  });
+
+  it.each([
+    ["no", "sign-in cancelled"],
+    ["timeout", "the sign-in code expired"],
+  ] as const)(
+    "exits without opening the sign-in page on %s",
+    async (answer, message) => {
+      await setupAtTerminal();
+      fakes.confirm.mockResolvedValue(answer);
+      const err = await expectCliError(
+        loginCmd(undefined, {}, {}),
+        EXIT.UNAUTHENTICATED,
+      );
+      expect(err.message).toContain(message);
+      expect(fakes.spawn).not.toHaveBeenCalled();
+      expect(env.cloud.calls.some((c) => c.path === "/oauth2/token")).toBe(
+        false,
+      );
+      expect(existsSync(join(env.dir, "session.json"))).toBe(false);
+    },
+  );
+
+  it("prints the link when the browser doesn't start", async () => {
+    await setupAtTerminal();
+    fakes.confirm.mockResolvedValue("yes");
+    fakes.spawn.mockImplementation(browserLaunch("error"));
+    await loginCmd(undefined, {}, {});
     expect(env.stderr()).toContain(
-      `  ${env.cloud.base}/device?user_code=ABCD-EFGH\n`,
+      `Couldn't open a browser; open this link instead:\n  ${deviceLink()}\n`,
     );
-    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["not at a terminal", () => fakes.isInteractive.mockReturnValue(false)],
+    [
+      "over SSH",
+      () => (process.env.SSH_CONNECTION = "10.0.0.2 50000 10.0.0.1 22"),
+    ],
+    ["with --no-browser", () => {}],
+  ])("prints the link instead of asking %s", async (when, arrange) => {
+    await setupAtTerminal();
+    arrange();
+    await loginCmd(
+      undefined,
+      { device: true, browser: when !== "with --no-browser" },
+      {},
+    );
+    expect(env.stderr()).toContain("Your sign-in code:\n\n    ABCD-EFGH\n");
+    expect(env.stderr()).toContain(`  ${deviceLink()}\n`);
+    expect(fakes.confirm).not.toHaveBeenCalled();
+    expect(fakes.spawn).not.toHaveBeenCalled();
   });
 
   it("signs in through the browser with PKCE and ignores forged callbacks", async () => {

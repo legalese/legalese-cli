@@ -39,10 +39,12 @@ a time: to switch organization, `legalese logout` and `legalese login` again.
 How it works: standard OAuth for native apps against the public WorkOS client
 "Legalese CLI". The browser flow uses PKCE and a callback on `127.0.0.1`
 (RFC 8252); when that callback isn't registered for the client, or with
-`--device`, it uses the device flow (RFC 8628): the CLI prints a short code and
-a link but doesn't open the browser itself. Open the link and confirm only if
-the page shows the same code. Access tokens last minutes and renew
-automatically; the single-use refresh token rotates on every renewal.
+`--device`, it uses the device flow (RFC 8628): the CLI shows a short code,
+then asks before opening the sign-in page (it prints the page's link instead
+with `--no-browser`, over SSH, or when not run at a terminal). Confirm there
+only if the page shows the same code. With no answer before the code expires,
+`login` exits. Access tokens last minutes and renew automatically; the
+single-use refresh token rotates on every renewal.
 
 The session's tokens are kept in the OS keychain (macOS Keychain, or libsecret
 on Linux via `secret-tool`); without one, in `~/.config/legalese/credentials.json`

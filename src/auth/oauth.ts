@@ -12,7 +12,7 @@ import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Config } from "../config.js";
 import { OAUTH_SCOPES } from "../config.js";
-import { bold, CliError, EXIT, info } from "../output.js";
+import { bold, CliError, confirm, EXIT, info, warn } from "../output.js";
 
 export interface AuthServer {
   issuer: string;
@@ -100,7 +100,17 @@ export function decodeJwtClaims(token: string): Record<string, unknown> {
   }
 }
 
-export function openBrowser(url: string): void {
+/** Whether a browser would open on the user's screen: not over SSH, and on
+ *  Linux only with a display. */
+export function canOpenBrowser(): boolean {
+  if (process.env.SSH_CONNECTION || process.env.SSH_TTY) return false;
+  if (process.platform === "linux")
+    return Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+  return true;
+}
+
+/** Open the URL in the default browser; false when that couldn't start. */
+export function openBrowser(url: string): Promise<boolean> {
   const cmd =
     process.platform === "darwin"
       ? "open"
@@ -108,15 +118,16 @@ export function openBrowser(url: string): void {
         ? "cmd"
         : "xdg-open";
   const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
-  try {
-    const child = spawn(cmd, args, { stdio: "ignore", detached: true });
-    child.on("error", () => {
-      /* headless — the URL is printed for the user to open manually */
-    });
-    child.unref();
-  } catch {
-    /* headless — the URL is printed for the user to open manually */
-  }
+  return new Promise((resolve) => {
+    try {
+      const child = spawn(cmd, args, { stdio: "ignore", detached: true });
+      child.once("spawn", () => resolve(true));
+      child.once("error", () => resolve(false));
+      child.unref();
+    } catch {
+      resolve(false);
+    }
+  });
 }
 
 interface TokenResponse {
@@ -331,15 +342,29 @@ function waitForCode(
       `Opening your browser to sign in to Legalese Cloud…\n` +
         `If it doesn't open, visit:\n  ${url}\n`,
     );
-    if (open) openBrowser(url.toString());
+    if (open) void openBrowser(url.toString());
   });
 }
 
-/** Device-authorization flow (RFC 8628): for SSH sessions and machines
- *  without a browser, and when browser sign-in isn't available. */
+const codeExpired = () =>
+  new CliError(
+    "the sign-in code expired — run 'legalese login' again",
+    EXIT.UNAUTHENTICATED,
+  );
+
+const validFor = (secs: number) =>
+  secs >= 120 ? `${Math.round(secs / 60)} minutes` : `${secs} seconds`;
+
+/**
+ * Device-authorization flow (RFC 8628): for SSH sessions and machines
+ * without a browser, and when browser sign-in isn't available. With
+ * `prompt`, it asks before opening the sign-in page; otherwise it prints
+ * the page's link.
+ */
 export async function deviceLogin(
   as: AuthServer,
   clientId: string,
+  opts: { prompt: boolean },
 ): Promise<TokenSet> {
   if (!as.deviceAuthorizationEndpoint) {
     throw new CliError(
@@ -372,18 +397,30 @@ export async function deviceLogin(
     );
   }
 
-  // The browser is never opened for the user: the page would take focus and
-  // they'd confirm without comparing its code with the one shown here.
+  // The code is shown before the page can open and take focus: confirming
+  // there is only safe once you've seen that it matches this one.
   const link = da.verification_uri_complete ?? da.verification_uri;
-  info(
-    `Your sign-in code:\n\n    ${bold(da.user_code)}\n\n` +
-      `Open this link and confirm only if the page shows the same code:\n` +
-      `  ${link}\n\n` +
-      `Waiting for you to confirm in the browser…`,
-  );
+  const expiresIn = da.expires_in ?? 300;
+  const deadline = nowSec() + expiresIn;
+  const check = `Confirm on the sign-in page only if it shows this code (valid for ${validFor(expiresIn)})`;
+  warn(`Your sign-in code:\n\n    ${bold(da.user_code)}\n`);
+  if (opts.prompt) {
+    warn(`${check}.`);
+    const answer = await confirm(
+      "Open the sign-in page in your browser now? [Y/n] ",
+      (deadline - nowSec()) * 1000,
+    );
+    if (answer === "no")
+      throw new CliError("sign-in cancelled", EXIT.UNAUTHENTICATED);
+    if (answer === "timeout") throw codeExpired();
+    if (!(await openBrowser(link)))
+      warn(`Couldn't open a browser; open this link instead:\n  ${link}`);
+  } else {
+    warn(`${check}:\n  ${link}`);
+  }
+  info("\nWaiting for you to confirm in the browser…");
 
   let intervalMs = (da.interval ?? 5) * 1000;
-  const deadline = nowSec() + (da.expires_in ?? 300);
   while (nowSec() < deadline) {
     await sleep(intervalMs);
     const { status, body } = await postForm(as.tokenEndpoint, {
@@ -409,10 +446,7 @@ export async function deviceLogin(
       body.error_description,
     );
   }
-  throw new CliError(
-    "the sign-in code expired — run 'legalese login' again",
-    EXIT.UNAUTHENTICATED,
-  );
+  throw codeExpired();
 }
 
 /** Exchange the refresh token. WorkOS rotates it: the caller must persist

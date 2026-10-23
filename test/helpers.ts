@@ -26,6 +26,12 @@ const ENV_KEYS = [
   "LEGALESE_CLIENT_ID",
   "LEGALESE_TOKEN",
   "LEGALESE_ORG",
+  // Whether a browser can open: cleared so the developer's session can't
+  // change what login does.
+  "SSH_CONNECTION",
+  "SSH_TTY",
+  "DISPLAY",
+  "WAYLAND_DISPLAY",
 ] as const;
 
 export interface TestEnv {
